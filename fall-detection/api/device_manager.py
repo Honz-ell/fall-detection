@@ -60,7 +60,7 @@ def list_devices():
     with connect() as conn:
         conn.execute("""
             INSERT INTO fall_devices (device_id, last_seen)
-            SELECT device_id, MAX(ingested_at) FROM fall_window_aggregates GROUP BY device_id
+            SELECT device_id, MAX(ingested_at) FROM window_features GROUP BY device_id
             ON CONFLICT (device_id) DO UPDATE SET
               last_seen=GREATEST(fall_devices.last_seen, EXCLUDED.last_seen)
         """)
@@ -71,7 +71,7 @@ def list_devices():
             FROM fall_devices d
             LEFT JOIN (
               SELECT device_id, COUNT(*) AS window_count, MAX(window_start) AS last_window
-              FROM fall_window_aggregates GROUP BY device_id
+              FROM window_features GROUP BY device_id
             ) s USING (device_id)
             ORDER BY d.device_id
         """).fetchall()

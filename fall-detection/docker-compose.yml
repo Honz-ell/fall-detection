@@ -1,0 +1,149 @@
+name: falldetect
+
+x-app-image: &app-image
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: falldetect-python:3.11-spark3.5
+
+services:
+  kafka:
+    image: apache/kafka:3.7.1
+    ports:
+      - "${KAFKA_HOST_PORT:-19092}:29092"
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: "INTERNAL://:9092,CONTROLLER://:9093,HOST://:29092"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:9092,HOST://localhost:${KAFKA_HOST_PORT:-19092}"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,HOST:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 8s
+      retries: 15
+      start_period: 25s
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${POSTGRES_HOST_PORT:-5434}:5432"
+    environment:
+      POSTGRES_DB: falldetect
+      POSTGRES_USER: falld
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fall_dev_password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U falld -d falldetect"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  trainer:
+    <<: *app-image
+    command: ["python", "/app/src/train.py", "--data", "${FALL_DATA_PATH:-/app/data/fallalld_demo_synthetic.csv}", "--data-origin", "${FALL_DATA_ORIGIN:-synthetic}"]
+    volumes:
+      - ./data:/app/data:ro
+      - ./models:/app/models
+    restart: "no"
+
+  spark:
+    <<: *app-image
+    entrypoint: ["tini", "--", "spark-submit"]
+    command:
+      - "--packages"
+      - "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3"
+      - "/app/src/spark_stream.py"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_TOPIC: "${KAFKA_TOPIC:-wearable.fall.v1}"
+      FALL_POSTGRES_URL: "postgresql://falld:${POSTGRES_PASSWORD:-fall_dev_password}@postgres:5432/falldetect"
+      SPARK_CHECKPOINT: "/app/runtime/spark-checkpoint"
+      SPARK_SHUFFLE_PARTITIONS: "2"
+    volumes:
+      - spark-checkpoint:/app/runtime
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  producer:
+    <<: *app-image
+    command:
+      - "python"
+      - "/app/src/producer.py"
+      - "--data"
+      - "${FALL_DATA_PATH:-/app/data/fallalld_demo_synthetic.csv}"
+      - "--broker"
+      - "kafka:9092"
+      - "--topic"
+      - "${KAFKA_TOPIC:-wearable.fall.v1}"
+      - "--devices"
+      - "${FALL_DEVICE_IDS:-wrist-01,wrist-02,wrist-03}"
+      - "--speed"
+      - "${PRODUCER_SPEED:-1}"
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+      spark:
+        condition: service_started
+    restart: "no"
+
+  scorer:
+    <<: *app-image
+    entrypoint: ["tini", "--", "sh", "-c"]
+    command:
+      - "until test -f /app/models/rf_fall.joblib; do echo 'Waiting for trained model artifact...'; sleep 2; done; exec python /app/src/scorer.py --model /app/models/rf_fall.joblib --postgres-url \"$FALL_POSTGRES_URL\""
+    environment:
+      FALL_POSTGRES_URL: "postgresql://falld:${POSTGRES_PASSWORD:-fall_dev_password}@postgres:5432/falldetect"
+      FALL_PROB_THRESHOLD: "${FALL_PROB_THRESHOLD:-0.70}"
+      FALL_ALERT_COOLDOWN_SECONDS: "${FALL_ALERT_COOLDOWN_SECONDS:-10}"
+    volumes:
+      - ./models:/app/models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      trainer:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fall_dev_password}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/falld-overview.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  kafka-data:
+  postgres-data:
+  spark-checkpoint:
+  grafana-data:

@@ -9,7 +9,7 @@ import psycopg
 ROOT = Path(__file__).resolve().parents[1]
 DATABASE_URL = os.getenv(
     "FALL_POSTGRES_URL",
-    "postgresql://falld:fall_dev_password@localhost:5433/falldetect",
+    "postgresql://falld:fall_dev_password@localhost:5434/falldetect",
 )
 
 

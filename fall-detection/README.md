@@ -1,147 +1,113 @@
-# Phát hiện ngã cho người cao tuổi — Big Data Pipeline (FallAllD)
+# Phát hiện té ngã thời gian thực — FallAllD-Wrist
 
-Đề tài thay thế WESAD/stress của nhóm 8: giữ nguyên stack **Producer → Kafka → Spark
-Structured Streaming → PostgreSQL → Grafana**, đổi dữ liệu/bài toán sang **phát hiện
-ngã theo thời gian thực** với dữ liệu thiết bị đeo cổ tay FallAllD.
+Prototype học thuật minh họa pipeline **Kafka → Spark Structured Streaming → PostgreSQL → Random Forest scorer → Grafana** trên dữ liệu cảm biến đeo cổ tay. Có kèm HTML demo tự chứa và slide thuyết trình tiếng Việt.
 
-## Kiến trúc
+> **An toàn và tính trung thực:** hệ thống không phải thiết bị y tế, không chẩn đoán và không tự liên hệ dịch vụ khẩn cấp. `data/fallalld_demo_synthetic.csv`, `models/rf_fall.joblib` và metric hiện có được tạo từ dữ liệu synthetic để kiểm thử pipeline; không đại diện kết quả trên FallAllD thật. Chưa có full CSV trong workspace. Không dùng các metric synthetic để kết luận hiệu năng.
 
-```
- data/fallalld_wrist_sample.csv
-        │  producer/produce_fall.py   (replay tốc độ ×N, mẫu 100 Hz)
-        ▼
-    Kafka topic: wearable.fall.v1
-        │  spark/aggregate_fall_stream.py   (cửa sổ 2s, watermark 5s)
-        ▼
- PostgreSQL: fall_window_aggregates
-        │  scorer/score_fall.py   (RandomForest, poll cửa sổ mới)
-        ├─► fall_predictions     (FALL / ADL + xác suất)
-        └─► fall_alerts          (cảnh báo ngã)
-        ▼
-   Website + Grafana: :3002 / :3001
-   Model Registry API: :8000 · Device Manager API: :8001
-```
+## Nội dung
 
-## Dữ liệu
-- Nguồn: <https://huggingface.co/datasets/IdaFLab/FallAllD-Wrist> (Saleh et al., IEEE Sensors Journal, 2021; DOI 10.1109/JSEN.2020.3018335).
-- Schema: `acc_x,acc_y,acc_z,label,gyro_x,gyro_y,gyro_z`; `label`: `0` = sinh hoạt thường ngày (ADL), `1` = ngã.
-- `data/fallalld_wrist_sample.csv` — 39 MB / 348.318 mẫu / 76.160 mẫu ngã (21,9%) để chạy thử.
-- Bản đầy đủ (11.971.400 mẫu): `bash data/download_fallalld.sh`.
+- `src/fall/common.py`: hợp đồng feature, cửa sổ và ngưỡng.
+- `src/train.py`: đọc CSV theo chunk, chia theo thời gian, train RF, ghi model và `metrics.json`.
+- `src/make_demo_sample.py`: tạo dữ liệu synthetic có chú thích.
+- `src/producer.py`: phát JSON theo tốc độ 238 mẫu/giây cho mỗi device hoặc chạy dry-run.
+- `src/spark_stream.py`: Kafka → event-time windows → PostgreSQL.
+- `src/scorer.py`: đọc feature chưa chấm, dự đoán FALL/ADL và tạo alert.
+- `sql/schema.sql`: bảng feature, predictions, alerts, model/device registry, view.
+- `docker-compose.yml`, `Dockerfile`: stack Kafka KRaft, PostgreSQL 16, Spark 3.5, trainer, producer, scorer, Grafana.
+- `grafana/provisioning/`: datasource và dashboard.
+- `dashboard_demo.html`: demo trình duyệt độc lập, dữ liệu giả lập.
+- `docs/FallAllD_BigData_Demo.pptx`: 14 slide tiếng Việt, có speaker notes.
+- `tests/test_bigdata_pipeline.py`: kiểm thử offline, không cần Docker/Kafka/DB.
 
-## Cấu trúc
-| Đường dẫn | Vai trò |
-|---|---|
-| `producer/produce_fall.py` | Đọc CSV → gửi JSON vào Kafka (`--dry-run` để test không cần broker) |
-| `spark/aggregate_fall_stream.py` | Structured Streaming: cửa sổ 2s → đặc trưng → Postgres |
-| `scorer/score_fall.py` | 3 chế độ: `--from-csv` (offline), `--input-jsonl`, mặc định poll Postgres |
-| `train/train_fall_model.py` | Huấn luyện RandomForest trên cửa sổ, lưu model + metrics |
-| `src/fall/` | Reader, đặc trưng, cửa sổ — nguồn sự thật dùng chung |
-| `sql/001_init.sql` | Schema PostgreSQL |
-| `deploy/docker-compose.yml` | Kafka + PostgreSQL + Grafana |
-| `grafana/fall-dashboard.json` | Dashboard Grafana |
-| `web/` | Website Next.js: giám sát, xử lý cảnh báo, quản lý thiết bị và model |
-| `api/model_registry.py` | Model Registry API — đăng ký/kích hoạt phiên bản model |
-| `api/device_manager.py` | Device Manager API — danh sách và metadata thiết bị |
-| `dashboard/` | Dashboard Python tối giản (tương thích ngược) |
-| `tests/test_offline_pipeline.py` | Kiểm thử đầu–cuối không cần Kafka/Spark |
+## Quy ước dữ liệu và giả định
 
-## Yêu cầu
-- Docker + Docker Compose (Kafka/Postgres/Grafana)
-- Python ≥ 3.10 (`requirements.txt`)
-- Node.js ≥ 20.9 + npm cho website trong `web/`
-- `spark-submit` (PySpark 3.5) cho Spark job
+- 238 Hz, 2 giây/cửa sổ ⇒ **476 mẫu**. Kích thước CSV chunk phải là bội số của 476; cửa sổ không bị ghép qua chunk.
+- Theo số liệu đề bài 11.971.400 mẫu: `11,971,400 / 476 = 25,150` cửa sổ. Đây là phép tính theo con số đầu vào, không xác nhận nội dung file tải về.
+- Cần 7 cột: `acc_x, acc_y, acc_z, label, gyro_x, gyro_y, gyro_z`.
+- Cửa sổ là FALL khi `mean(label) >= 0.5`.
+- Có 11 feature: acc magnitude (mean, sample std `ddof=1`, min, max, range), std của ba trục acc, gyro magnitude (mean, sample std `ddof=1`, max). **Label không được đưa vào model feature.**
+- Chia train/test theo thời gian 80/20, không shuffle; RF 300 cây, `balanced_subsample`.
+- Stream drop cửa sổ có ít hơn `ceil(0.9 × 476) = 429` mẫu. Ngưỡng mặc định 0.70; cooldown alert mặc định 10 giây/device.
+- Dataset không có user ID/timestamp theo yêu cầu dữ liệu này; producer gán ID thiết bị tổng hợp và event-time theo thứ tự mẫu. Không thể đánh giá generalization theo người nếu thiếu metadata tương ứng.
 
-## Chạy thử
+## Chạy kiểm thử offline
+
+Linux/macOS:
+
 ```bash
-make install                 # pip install -r requirements.txt
-python train/train_fall_model.py --data data/fallalld_wrist_sample.csv
-python tests/test_offline_pipeline.py --data data/fallalld_wrist_sample.csv
-
-make up                      # kafka + postgres + grafana (:9092 / :5432 / :3000)
-make producer                # phát dữ liệu vào Kafka
-make spark                   # spark-submit job tổng hợp
-make scorer                  # dự đoán + cảnh báo vào PostgreSQL
-make down
+cd fall-detection
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install numpy==2.1.3 pandas==2.2.3 scikit-learn==1.5.2 joblib==1.4.2 kafka-python==2.0.2 psycopg[binary]==3.2.3 python-pptx==1.0.2 pillow==11.1.0
+python -m unittest discover -s tests -p 'test_bigdata_pipeline.py' -v
 ```
 
-### Chạy Website demo + các API
-
-Yêu cầu Node.js ≥ 20.9. PostgreSQL cần đang chạy; cấu hình dưới đây dùng cổng host `5433`.
-Cài API dependencies một lần:
+PowerShell:
 
 ```powershell
-pip install -r .\requirements.txt
+cd D:\DLLL\data-repo\fall-detection
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install numpy==2.1.3 pandas==2.2.3 scikit-learn==1.5.2 joblib==1.4.2 kafka-python==2.0.2 "psycopg[binary]==3.2.3" python-pptx==1.0.2 pillow==11.1.0
+python -m unittest discover -s tests -p test_bigdata_pipeline.py -v
 ```
 
-Mở ba PowerShell riêng tại thư mục `fall-detection/`; trong mỗi cửa sổ kích hoạt `.venv`
-và đặt kết nối database:
+## Tải và train FallAllD thật
 
-```powershell
-$env:FALL_POSTGRES_URL = "postgresql://falld:fall_dev_password@localhost:5433/falldetect"
+Tải CSV đầy đủ khoảng 1.37 GB (cần truy cập Hugging Face từ máy của bạn):
+
+```bash
+bash data/download_fallalld.sh
 ```
 
-Cửa sổ 1 — Model Registry API:
+Trên PowerShell, có thể tải đúng file CSV theo URL ghi trong script bằng `Invoke-WebRequest`/`curl.exe`; tránh commit dữ liệu lớn. Sau đó:
 
-```powershell
-python -m uvicorn api.model_registry:app --host 0.0.0.0 --port 8000
+```bash
+python src/train.py --data data/fallalld_processed_wrist-acc-gyro.csv --data-origin real
 ```
 
-Cửa sổ 2 — Device Manager API:
+Windows PowerShell dùng cùng lệnh `python src/train.py ...`. Kết quả sẽ ghi `models/rf_fall.joblib` và `models/metrics.json`; xem trường `data_origin` trước khi trích metrics. Script cần ít nhất 10 cửa sổ hoàn chỉnh và cả hai lớp trong tập train. Số metric chỉ có ý nghĩa theo dữ liệu/nhãn và quy tắc chia tập cụ thể; chưa có đánh giá theo participant/session.
 
-```powershell
-python -m uvicorn api.device_manager:app --host 0.0.0.0 --port 8001
+## Docker Compose
+
+Yêu cầu Docker Engine/Desktop và Docker Compose v2. `wesad-kafka` của môi trường người dùng đang dùng host port 9092 nên cấu hình project này dùng Kafka host port **19092** và PostgreSQL **5434**, tránh xung đột; Grafana mặc định **3000**.
+
+```bash
+cd fall-detection
+# 1. Tạo model demo synthetic (không dùng làm kết quả thực)
+python src/make_demo_sample.py --windows 40 --output data/fallalld_demo_synthetic.csv
+python src/train.py --data data/fallalld_demo_synthetic.csv --data-origin synthetic
+# 2. Khởi động
+
+docker compose up --build
 ```
 
-Cửa sổ 3 — Website Next.js:
+Lệnh dừng: `docker compose down`. Dữ liệu lưu trong volumes Docker. Compose và tích hợp Spark/Kafka/DB cần được chạy trên máy có Docker để xác nhận môi trường; bài test offline không thay thế integration test.
 
-```powershell
-cd .\web
-npm install
-npm run dev -- --hostname 0.0.0.0 --port 3002
+Các tham số môi trường quan trọng (xem `docker-compose.yml`): `FALL_THRESHOLD` (0–1, mặc định 0.70), `ALERT_COOLDOWN_SECONDS` (mặc định 10), `WINDOW_SECONDS` (2), `WATERMARK_SECONDS` (4), cùng Kafka/PostgreSQL connection settings. Nếu tự chạy các tiến trình ngoài Compose, cần cài PySpark tương thích Spark 3.5 và các dependency Python trong services.
+
+Grafana: `http://localhost:3000` (credential demo trong compose; chỉ dùng local). PostgreSQL từ host: `localhost:5434`; Kafka bootstrap từ host: `localhost:19092`. Không mở stack demo ra Internet.
+
+## HTML dashboard mô phỏng
+
+Mở trực tiếp `dashboard_demo.html` trong trình duyệt. Không cần package/CDN/server. Màn hình gồm pipeline 6 bước, KPI, 3 người theo dõi, canvas lịch sử cửa sổ, nút mô phỏng tình huống, cảnh báo, xác nhận/báo nhầm, điều chỉnh ngưỡng, sáng/tối và responsive. Nhãn **“DEMO MÔ PHỎNG, số liệu giả lập”** luôn thể hiện rõ. Tương tác không gửi SMS/cuộc gọi và không ghi DB.
+
+## Slide
+
+`docs/FallAllD_BigData_Demo.pptx` có 14 slide 16:9, tiếng Việt và speaker notes. Các slide preview PNG và contact sheet nằm trong `docs/slides_preview/`; tạo lại bằng:
+
+```bash
+python tools/build_presentation.py
 ```
 
-Mở <http://localhost:3002>. Website có màn hình tổng quan, hàng đợi cảnh báo có thể
-xác nhận, quản lý metadata thiết bị và đăng ký/kích hoạt model trong registry. Tab
-**Mô phỏng demo** cho phép chọn người theo dõi, thử đi lại/nghỉ/vẫy tay/giả lập ngã,
-đổi độ nhạy và phân loại cảnh báo; đây là dữ liệu giả lập trong trình duyệt, không ghi DB
-và không gửi cảnh báo thật. Chạy
-`npm install` lần đầu hoặc sau khi thay đổi `package-lock.json`. Nếu PostgreSQL map sang
-cổng host khác, sửa `FALL_POSTGRES_URL` tương ứng. Dừng mỗi service bằng `Ctrl+C`.
+Script kiểm tra kích thước/fit text trước khi render PNG; PPTX nhúng các ảnh đã kiểm tra cùng notes. Nếu thay nội dung slide, chạy lại script và xem `contact_sheet.png`. LibreOffice/PowerPoint renderer không có sẵn trong môi trường xây dựng nên chưa kiểm tra hiển thị bằng ứng dụng PowerPoint thực tế.
 
-> Model activation hiện cập nhật trạng thái trong registry; scorer đang chạy vẫn dùng
-> model được truyền qua `--model` cho tới khi được khởi động lại với file mới.
+## Hạn chế / trước khi triển khai
 
-## Kết quả đo được (trên mẫu 39 MB, cửa sổ 200 mẫu ≈ 2s @100 Hz)
-Huấn luyện/tách của `train` (1.741 cửa sổ; test 349):
+1. Tải và xác thực CSV thật, sample rate, nhãn, row count và nguồn dữ liệu.
+2. Chạy train, kiểm tra metrics.json, rồi thay model demo.
+3. Chạy Compose và kiểm thử schema/SQL/stream end-to-end; đo độ trễ, throughput, restart/replay và xử lý duplicate.
+4. Đánh giá theo người/session nếu có metadata; cân nhắc calibration và chi phí false negatives/positives.
+5. Thiết lập quy trình xác minh con người, bảo mật, quyền riêng tư, vận hành và kiểm định lâm sàng thích hợp trước mọi mục đích chăm sóc thật.
 
-| Chỉ số | ADL | NGÃ |
-|---|---|---|
-| Precision | 0,93 | 0,80 |
-| Recall | 0,95 | 0,72 |
-| F1 | 0,94 | **0,76** |
-
-ROC-AUC = **0,9554**. Confusion matrix (test): TN=262, FP=13, FN=21, TP=53.
-
-`scorer` chạy trên **toàn bộ** mẫu (gồm cả cửa sổ đã huấn luyện) được P=0,9615 /
-R=0,9211 / F1=0,9409 — con số này **lạc quan**, dùng để kiểm thử pipeline chứ không
-dùng báo cáo. Báo cáo lấy số của tập test ở trên.
-
-Đặc trưng quan trọng nhất: `acc_y_mean`, `acc_x_mean`, `acc_z_mean`, `acc_mag_max`.
-
-## Các quyết định kỹ thuật (để báo cáo không bị lệch)
-1. **`stddev_pop` trong Spark** khớp `numpy.std` (population std) — dùng `stddev_samp`
-   sẽ lệch đặc trưng giữa huấn luyện và streaming.
-2. **`label` chỉ dùng để đánh giá**, không đưa vào đặc trưng; nhãn cửa sổ = tỉ lệ mẫu
-   `label=1` ≥ 0,5.
-3. CSV gốc **không có timestamp** → producer tổng hợp `timestamp = start + i/sample_rate`;
-   `sample_rate` mặc định 100 Hz, đổi bằng `--sample-rate`.
-4. Tái dùng ~80% hạ tầng repo cũ (`compose.yaml`, Spark job, Model Registry, Grafana);
-   thay reader, schema, model và dashboard.
-5. **Hạn chế:** chia train/test ngẫu nhiên theo cửa sổ; dữ liệu thật nên chia theo
-   người/session để tránh leakage. Spark/Kafka chưa chạy trong sandbox (không có Docker),
-   cần chạy thật trên máy có Docker để xác nhận độ trễ end-to-end.
-
-## Bước tiếp theo (đề xuất)
-- Chạy thật `docker compose up` + đo latency producer→alert.
-- Tăng `--window-samples` / thử thêm model (GradientBoosting) và so sánh.
-- Thêm module nhịp tim/giấc ngủ nếu muốn giữ chủ đề cũ.
+Không có metric trên full FallAllD hoặc kết quả đo runtime được tuyên bố trong repo này.

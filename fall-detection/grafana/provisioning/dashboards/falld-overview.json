@@ -1,0 +1,52 @@
+{
+  "uid": "falld-overview-v2",
+  "title": "FallAllD · Giám sát té ngã thời gian thực",
+  "tags": ["FallAllD", "Big Data", "demo"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {"from": "now-30m", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Chuyển động cảm biến & xác suất FALL",
+      "gridPos": {"h": 10, "w": 16, "x": 0, "y": 0},
+      "datasource": {"type": "postgres", "uid": "fall-pg"},
+      "targets": [{"refId": "A", "rawSql": "SELECT w.window_start AS time, 'Gia tốc tối đa · ' || w.device_id AS metric, w.acc_mag_max AS value FROM window_features w WHERE $__timeFilter(w.window_start) UNION ALL SELECT p.window_start AS time, 'Xác suất FALL (%) · ' || p.device_id AS metric, p.probability * 100 AS value FROM predictions p WHERE $__timeFilter(p.window_start) ORDER BY time", "format": "time_series"}],
+      "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "fillOpacity": 12}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 70}]}}},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Cảnh báo đang mở",
+      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 0},
+      "datasource": {"type": "postgres", "uid": "fall-pg"},
+      "targets": [{"refId": "A", "rawSql": "SELECT COUNT(*)::bigint AS open_alerts FROM alerts WHERE disposition='OPEN'", "format": "table"}],
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "value"}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Cửa sổ phân tích · 15 phút",
+      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 5},
+      "datasource": {"type": "postgres", "uid": "fall-pg"},
+      "targets": [{"refId": "A", "rawSql": "SELECT COUNT(*)::bigint AS windows_15m FROM window_features WHERE window_start >= NOW() - INTERVAL '15 minutes' AND window_start <= NOW()", "format": "table"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "auto", "textMode": "value"}
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Cảnh báo gần nhất · cần người theo dõi xác minh",
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 10},
+      "datasource": {"type": "postgres", "uid": "fall-pg"},
+      "targets": [{"refId": "A", "rawSql": "SELECT created_at AS time, device_id, ROUND((probability * 100)::numeric, 1) AS probability_percent, disposition, model_version FROM alerts ORDER BY created_at DESC LIMIT 50", "format": "table"}],
+      "options": {"showHeader": true, "sortBy": [{"displayName": "time", "desc": true}]}
+    }
+  ],
+  "annotations": {"list": []},
+  "links": []
+}

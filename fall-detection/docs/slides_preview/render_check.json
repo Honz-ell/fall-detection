@@ -1,0 +1,11 @@
+{
+  "slide_count": 14,
+  "size_px": [
+    1600,
+    900
+  ],
+  "aspect_ratio": "16:9",
+  "text_fitting": "Every rendered text box measured and fit within assigned bounds; PPTX slides use the checked full-slide render.",
+  "speaker_notes": true,
+  "pptx": "docs/FallAllD_BigData_Demo.pptx"
+}

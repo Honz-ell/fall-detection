@@ -15,3 +15,4 @@ runtime/
 # Dữ liệu lớn: chỉ lưu mẫu nhỏ trong repo, bản đầy đủ để ngoài
 data/*.csv.gz
 data/*_full.csv
+data/fallalld_processed_wrist-acc-gyro.csv

@@ -1,45 +1,55 @@
 {
-  "model_type": "RandomForestClassifier",
-  "window_samples": 200,
-  "fall_ratio": 0.5,
+  "source_file": "fallalld_demo_synthetic.csv",
+  "data_origin": "synthetic",
+  "source_rows_used": 19040,
+  "source_windows": 40,
+  "sample_rate_hz": 238,
+  "window_seconds": 2,
+  "window_samples": 476,
+  "window_label_rule": "mean(label) >= 0.5 => FALL",
+  "std_ddof": 1,
+  "train_test_split": "chronological; first 80% train, final 20% test; no shuffle",
+  "train_windows": 32,
+  "test_windows": 8,
+  "n_estimators": 300,
+  "class_weight": "balanced_subsample",
   "feature_columns": [
     "acc_mag_mean",
     "acc_mag_std",
-    "acc_mag_max",
     "acc_mag_min",
-    "acc_x_mean",
-    "acc_y_mean",
-    "acc_z_mean",
+    "acc_mag_max",
+    "acc_mag_range",
+    "acc_x_std",
+    "acc_y_std",
+    "acc_z_std",
     "gyro_mag_mean",
     "gyro_mag_std",
     "gyro_mag_max"
   ],
-  "n_train": 1392,
-  "n_test": 349,
-  "precision": 0.803,
-  "recall": 0.7162,
-  "f1": 0.7571,
-  "roc_auc": 0.9554,
-  "confusion_matrix": [
+  "fall_precision": 1.0,
+  "fall_recall": 1.0,
+  "fall_f1": 1.0,
+  "confusion_matrix_labels_0_1": [
     [
-      262,
-      13
+      4,
+      0
     ],
     [
-      21,
-      53
+      0,
+      4
     ]
   ],
   "feature_importance": {
-    "acc_y_mean": 0.2222,
-    "acc_x_mean": 0.1548,
-    "acc_z_mean": 0.1506,
-    "acc_mag_max": 0.0791,
-    "acc_mag_mean": 0.0751,
-    "gyro_mag_mean": 0.0741,
-    "acc_mag_std": 0.0718,
-    "acc_mag_min": 0.0628,
-    "gyro_mag_max": 0.0549,
-    "gyro_mag_std": 0.0546
+    "gyro_mag_std": 0.12666666666666668,
+    "gyro_mag_max": 0.12333333333333331,
+    "gyro_mag_mean": 0.12,
+    "acc_mag_range": 0.1,
+    "acc_z_std": 0.1,
+    "acc_x_std": 0.09333333333333334,
+    "acc_mag_max": 0.09,
+    "acc_mag_mean": 0.08666666666666667,
+    "acc_mag_std": 0.08333333333333333,
+    "acc_y_std": 0.07666666666666666,
+    "acc_mag_min": 2.220446049250312e-17
   }
 }
