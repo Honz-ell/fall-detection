@@ -101,7 +101,10 @@ npm run dev -- --hostname 0.0.0.0 --port 3002
 ```
 
 Mở <http://localhost:3002>. Website có màn hình tổng quan, hàng đợi cảnh báo có thể
-xác nhận, quản lý metadata thiết bị và đăng ký/kích hoạt model trong registry. Chạy
+xác nhận, quản lý metadata thiết bị và đăng ký/kích hoạt model trong registry. Tab
+**Mô phỏng demo** cho phép chọn người theo dõi, thử đi lại/nghỉ/vẫy tay/giả lập ngã,
+đổi độ nhạy và phân loại cảnh báo; đây là dữ liệu giả lập trong trình duyệt, không ghi DB
+và không gửi cảnh báo thật. Chạy
 `npm install` lần đầu hoặc sau khi thay đổi `package-lock.json`. Nếu PostgreSQL map sang
 cổng host khác, sửa `FALL_POSTGRES_URL` tương ứng. Dừng mỗi service bằng `Ctrl+C`.
 
