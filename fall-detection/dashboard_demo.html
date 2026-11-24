@@ -31,8 +31,8 @@ const people=[
  {id:'wrist-02',name:'Ông Hùng',age:82,room:'Khu vườn',activity:'Đang nghỉ',mode:'rest',prob:0.02,acc:11},
  {id:'wrist-03',name:'Bà Mai',age:75,room:'Phòng ngủ',activity:'Đang ngồi nghỉ',mode:'rest',prob:0.01,acc:10}
 ];
-let selectedId=people[0].id,threshold=0.70,paused=false,windows=30,confirmed=0,falseAlarms=0,step=0,prevAbove=false,alerts=[],samples=seedSamples();
 const $=id=>document.getElementById(id), random=(a,b)=>a+Math.random()*(b-a);
+let selectedId=people[0].id,threshold=0.70,paused=false,windows=30,confirmed=0,falseAlarms=0,step=0,prevAbove=false,alerts=[],samples=seedSamples();
 function seedSamples(){return Array.from({length:30},(_,i)=>({at:Date.now()-(29-i)*2000,acc:10+(i*7%6)+((i%11===0)?4:0),prob:random(.015,.065)}))}
 function selected(){return people.find(p=>p.id===selectedId)}
 function toast(message){const t=$('toast');t.textContent=message;t.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.hidden=true,3200)}
