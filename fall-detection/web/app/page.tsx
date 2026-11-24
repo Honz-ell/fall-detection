@@ -40,6 +40,14 @@ export default function Home() {
   const [filter, setFilter] = useState<"open" | "all">("open");
   const [selected, setSelected] = useState<AlertRow | null>(null);
   const [toast, setToast] = useState("");
+  const [clock, setClock] = useState("--:--:--");
+
+  useEffect(() => {
+    const tick = () => setClock(new Date().toLocaleTimeString("vi-VN"));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -96,7 +104,7 @@ export default function Home() {
     <main className="main"><header className="topbar"><div><div className="breadcrumb">FallAllD <span>/</span> {pageTitle}</div><h1>{pageTitle}</h1></div><div className="top-actions"><span className={`system-pill ${error ? "offline" : "online"}`}><i/> {error ? "Cần kiểm tra kết nối" : "Giám sát đang hoạt động"}</span><button className="button secondary" onClick={() => { void loadDashboard(); void loadAdmin(); }}>↻ Làm mới</button></div></header>
       {error && <div className="notice error"><b>Chưa đọc được dữ liệu:</b> {error}<span> Kiểm tra PostgreSQL và FALL_POSTGRES_URL.</span></div>}
       {tab === "overview" && <>
-        <section className="intro"><div><div className="eyebrow">LIVE SAFETY MONITORING</div><h2>Phát hiện sớm. Phản hồi kịp thời.</h2><p>Chuyển động cổ tay → phân tích AI → người theo dõi xử lý cảnh báo.</p></div><div className="last-update">Cập nhật tự động mỗi 5 giây<br/><b>{new Date().toLocaleTimeString("vi-VN")}</b></div></section>
+        <section className="intro"><div><div className="eyebrow">LIVE SAFETY MONITORING</div><h2>Phát hiện sớm. Phản hồi kịp thời.</h2><p>Chuyển động cổ tay → phân tích AI → người theo dõi xử lý cảnh báo.</p></div><div className="last-update">Cập nhật tự động mỗi 5 giây<br/><b>{clock}</b></div></section>
         <section className="kpis"><Kpi label="Cần người theo dõi kiểm tra" value={n(data?.summary.open_alerts)} hint="Cảnh báo chưa được xác nhận" icon="!" tone="red"/><Kpi label="Cửa sổ phân tích · 15 phút" value={n(data?.summary.windows_15m)} hint="Gom mẫu cảm biến theo thời gian" icon="▥" tone="blue"/><Kpi label="Cảnh báo mới · 15 phút" value={n(data?.summary.alerts_15m)} hint="Dự đoán FALL gần đây" icon="◉" tone="amber"/><Kpi label="Thiết bị ghi nhận" value={n(data?.summary.devices)} hint={data?.summary.latest?.device_id ? `Gần nhất: ${data.summary.latest.device_id}` : "Chưa có thiết bị gửi dữ liệu"} icon="⌁" tone="green"/></section>
         <section className="content-grid"><article className="panel chart-panel"><div className="panel-heading"><div><h2>Hoạt động cảm biến</h2><p>Gia tốc cực đại theo cửa sổ · đỏ = FALL, xanh = ADL</p></div><span className="chip">60 cửa sổ gần nhất</span></div><div className="chart-wrap"><Sparkline rows={data?.timeline || []}/></div><div className="legend"><span><i className="legend-blue"/> Gia tốc tối đa</span><span><i className="legend-red"/> FALL</span><span><i className="legend-green"/> ADL</span></div></article>
         <article className="panel alert-panel"><div className="panel-heading"><div><h2>Hàng đợi cảnh báo</h2><p>Chọn sự kiện để xem lý do và ghi nhận xử lý</p></div><span className="chip">Random Forest</span></div><div className="filter-row"><button className={filter === "open" ? "filter active" : "filter"} onClick={() => setFilter("open")}>Cần xử lý ({data?.summary.open_alerts ?? 0})</button><button className={filter === "all" ? "filter active" : "filter"} onClick={() => setFilter("all")}>Gần đây</button></div><div className="alert-stack">{visibleAlerts.length ? visibleAlerts.map(a => <button className="alert-row" key={a.id} onClick={() => setSelected(a)}><span className="alert-symbol">!</span><span className="alert-copy"><b>{a.device_id} <i className="fall-badge">FALL</i></b><small>{fmt(a.created_at)} · độ tin cậy {Math.round(Number(a.score) * 100)}%</small></span><span className="row-arrow">›</span></button>) : <div className="empty-state">{data?.alerts.length ? "Không còn cảnh báo cần xử lý trong danh sách gần đây." : "Chưa ghi nhận cảnh báo nào. Khi mô hình phát hiện FALL, sự kiện sẽ xuất hiện ở đây."}</div>}</div><div className="howto"><b>Quy trình:</b> mở cảnh báo → xác minh người đeo → ghi nhận đã kiểm tra.</div></article></section>
