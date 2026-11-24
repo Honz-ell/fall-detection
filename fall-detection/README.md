@@ -37,7 +37,8 @@ ngã theo thời gian thực** với dữ liệu thiết bị đeo cổ tay Fall
 | `src/fall/` | Reader, đặc trưng, cửa sổ — nguồn sự thật dùng chung |
 | `sql/001_init.sql` | Schema PostgreSQL |
 | `deploy/docker-compose.yml` | Kafka + PostgreSQL + Grafana |
-| `grafana/fall-dashboard.json` | Dashboard mẫu |
+| `grafana/fall-dashboard.json` | Dashboard Grafana |
+| `dashboard/` | Giao diện web demo local, cập nhật dữ liệu PostgreSQL mỗi 5 giây |
 | `tests/test_offline_pipeline.py` | Kiểm thử đầu–cuối không cần Kafka/Spark |
 
 ## Yêu cầu
@@ -57,6 +58,18 @@ make spark                   # spark-submit job tổng hợp
 make scorer                  # dự đoán + cảnh báo vào PostgreSQL
 make down
 ```
+
+### Mở giao diện demo trực quan
+
+Khi PostgreSQL đang chạy, mở thêm PowerShell tại thư mục `fall-detection/`:
+
+```powershell
+python .\dashboard\app.py --postgres-url "postgresql://falld:fall_dev_password@localhost:5433/falldetect" --port 8501
+```
+
+Mở <http://localhost:8501>. Dashboard hiển thị trạng thái dữ liệu, số cửa sổ phân tích,
+biểu đồ gia tốc, các dự đoán FALL/ADL và luồng xử lý. Với Compose dùng cổng PostgreSQL
+mặc định, thay `5433` bằng `5432`. Dừng giao diện bằng `Ctrl+C`.
 
 ## Kết quả đo được (trên mẫu 39 MB, cửa sổ 200 mẫu ≈ 2s @100 Hz)
 Huấn luyện/tách của `train` (1.741 cửa sổ; test 349):

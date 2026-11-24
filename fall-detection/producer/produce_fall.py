@@ -81,7 +81,7 @@ def main() -> int:
     sent = 0
     last_future = None
     print(
-        f"Phát {args.data} → "
+        f"Phát {args.data} -> "
         f"{'Kafka ' + args.topic if producer else 'DRY-RUN ' + str(args.dry_run)} | "
         f"rate={args.sample_rate:g} Hz, speed={args.speed:g}x"
     )

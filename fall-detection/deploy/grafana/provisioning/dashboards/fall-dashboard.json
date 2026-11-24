@@ -1,0 +1,55 @@
+{
+  "uid": "falld-overview",
+  "title": "FallAllD — Giám sát & phát hiện ngã",
+  "tags": ["bigdata", "fall-detection"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {"from": "now-15m", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Cường độ gia tốc tối đa theo cửa sổ",
+      "gridPos": {"h": 8, "w": 16, "x": 0, "y": 0},
+      "datasource": {"type": "postgres", "uid": "fallpg"},
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT window_start AS time, device_id, max_acc_mag FROM fall_window_aggregates ORDER BY window_start",
+          "format": "time_series"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Số cảnh báo ngã (chưa xác nhận)",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "datasource": {"type": "postgres", "uid": "fallpg"},
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT COUNT(*) FROM fall_alerts WHERE NOT acknowledged",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}}
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Cảnh báo gần nhất",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "datasource": {"type": "postgres", "uid": "fallpg"},
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT a.created_at AS thoi_diem, a.device_id, a.score, p.prediction FROM fall_alerts a LEFT JOIN fall_predictions p ON p.device_id = a.device_id AND p.window_start = a.window_start ORDER BY a.created_at DESC LIMIT 50",
+          "format": "table"
+        }
+      ]
+    }
+  ]
+}
