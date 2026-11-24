@@ -12,13 +12,13 @@ const initialPeople: Person[] = [
   { id: "wrist-02", name: "Ông Hùng", age: 82, room: "Khu vườn", wrist: "WRIST-02", mode: "rest", probability: 0.02 },
   { id: "wrist-03", name: "Bà Mai", age: 75, room: "Phòng ngủ", wrist: "WRIST-03", mode: "rest", probability: 0.01 },
 ];
-const initialSamples: Sample[] = Array.from({ length: 30 }, (_, i) => ({ at: Date.now() - (29 - i) * 2000, acc: 11 + (i * 7 % 6) + (i % 9 === 0 ? 5 : 0), probability: 0.02 + (i % 8) * 0.006 }));
+const makeInitialSamples = (): Sample[] => Array.from({ length: 30 }, (_, i) => ({ at: Date.now() - (29 - i) * 2000, acc: 11 + (i * 7 % 6) + (i % 9 === 0 ? 5 : 0), probability: 0.02 + (i % 8) * 0.006 }));
 const timeLabel = (t: number) => new Date(t).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 export default function Simulation() {
   const [people, setPeople] = useState(initialPeople);
   const [selectedId, setSelectedId] = useState(initialPeople[0].id);
-  const [samples, setSamples] = useState(initialSamples);
+  const [samples, setSamples] = useState<Sample[]>(makeInitialSamples);
   const [alerts, setAlerts] = useState<SimAlert[]>([]);
   const [sensitivity, setSensitivity] = useState(70);
   const [windows, setWindows] = useState(30);
@@ -55,7 +55,7 @@ export default function Simulation() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused, selectedId, selected.mode, sensitivity]);
 
-  function choosePerson(id: string) { previousAbove.current = false; setSelectedId(id); }
+  function choosePerson(id: string) { previousAbove.current = false; setSelectedId(id); setSamples(makeInitialSamples()); }
   function chooseMode(mode: Mode) { previousAbove.current = false; setPeople(prev => prev.map(p => p.id === selectedId ? { ...p, mode } : p)); emit(mode); }
   function markAlert(alert: SimAlert, status: "confirmed" | "false_alarm") {
     setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, status } : a));
