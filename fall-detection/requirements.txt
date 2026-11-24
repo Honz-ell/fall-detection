@@ -1,0 +1,10 @@
+# Producer / scorer / train
+kafka-python==2.0.2
+pandas==2.2.3
+numpy==2.1.3
+scikit-learn==1.5.2
+joblib==1.4.2
+psycopg[binary]==3.2.3
+
+# Spark job chạy trong container (không cần cài trên máy):
+#   pyspark==3.5.3

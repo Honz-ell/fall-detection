@@ -1,0 +1,14 @@
+apiVersion: 1
+datasources:
+  - name: falldetect
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: falldetect
+    user: falld
+    secureJsonData:
+      password: fall_dev_password
+    jsonData:
+      sslmode: disable
+    isDefault: true
+    editable: true

@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.checkpoints/
+checkpoints/
+runtime/
+*.log
+.DS_Store
+# Dữ liệu lớn: chỉ lưu mẫu nhỏ trong repo, bản đầy đủ để ngoài
+data/*.csv.gz
+data/*_full.csv
