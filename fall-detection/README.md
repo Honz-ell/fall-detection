@@ -18,7 +18,8 @@ ngã theo thời gian thực** với dữ liệu thiết bị đeo cổ tay Fall
         ├─► fall_predictions     (FALL / ADL + xác suất)
         └─► fall_alerts          (cảnh báo ngã)
         ▼
-   Grafana dashboard: falld-overview  (:3000)
+   Website + Grafana: :3002 / :3001
+   Model Registry API: :8000 · Device Manager API: :8001
 ```
 
 ## Dữ liệu
@@ -38,12 +39,16 @@ ngã theo thời gian thực** với dữ liệu thiết bị đeo cổ tay Fall
 | `sql/001_init.sql` | Schema PostgreSQL |
 | `deploy/docker-compose.yml` | Kafka + PostgreSQL + Grafana |
 | `grafana/fall-dashboard.json` | Dashboard Grafana |
-| `dashboard/` | Giao diện web demo local, cập nhật dữ liệu PostgreSQL mỗi 5 giây |
+| `web/` | Website Next.js: giám sát, xử lý cảnh báo, quản lý thiết bị và model |
+| `api/model_registry.py` | Model Registry API — đăng ký/kích hoạt phiên bản model |
+| `api/device_manager.py` | Device Manager API — danh sách và metadata thiết bị |
+| `dashboard/` | Dashboard Python tối giản (tương thích ngược) |
 | `tests/test_offline_pipeline.py` | Kiểm thử đầu–cuối không cần Kafka/Spark |
 
 ## Yêu cầu
 - Docker + Docker Compose (Kafka/Postgres/Grafana)
 - Python ≥ 3.10 (`requirements.txt`)
+- Node.js ≥ 20.9 + npm cho website trong `web/`
 - `spark-submit` (PySpark 3.5) cho Spark job
 
 ## Chạy thử
@@ -59,19 +64,49 @@ make scorer                  # dự đoán + cảnh báo vào PostgreSQL
 make down
 ```
 
-### Mở giao diện demo trực quan
+### Chạy Website demo + các API
 
-Khi PostgreSQL đang chạy, mở thêm PowerShell tại thư mục `fall-detection/`:
+Yêu cầu Node.js ≥ 20.9. PostgreSQL cần đang chạy; cấu hình dưới đây dùng cổng host `5433`.
+Cài API dependencies một lần:
 
 ```powershell
-python .\dashboard\app.py --postgres-url "postgresql://falld:fall_dev_password@localhost:5433/falldetect" --port 8501
+pip install -r .\requirements.txt
 ```
 
-Mở <http://localhost:8501>. Dashboard hiển thị trạng thái dữ liệu, số cửa sổ phân tích,
-biểu đồ gia tốc, các dự đoán FALL/ADL và luồng xử lý. Chọn một cảnh báo để xem đặc trưng
-cảm biến/độ tin cậy, rồi dùng **Ghi nhận đã kiểm tra** để cập nhật trạng thái cảnh báo.
-Với Compose dùng cổng PostgreSQL
-mặc định, thay `5433` bằng `5432`. Dừng giao diện bằng `Ctrl+C`.
+Mở ba PowerShell riêng tại thư mục `fall-detection/`; trong mỗi cửa sổ kích hoạt `.venv`
+và đặt kết nối database:
+
+```powershell
+$env:FALL_POSTGRES_URL = "postgresql://falld:fall_dev_password@localhost:5433/falldetect"
+```
+
+Cửa sổ 1 — Model Registry API:
+
+```powershell
+python -m uvicorn api.model_registry:app --host 0.0.0.0 --port 8000
+```
+
+Cửa sổ 2 — Device Manager API:
+
+```powershell
+python -m uvicorn api.device_manager:app --host 0.0.0.0 --port 8001
+```
+
+Cửa sổ 3 — Website Next.js:
+
+```powershell
+cd .\web
+npm install
+npm run dev -- --hostname 0.0.0.0 --port 3002
+```
+
+Mở <http://localhost:3002>. Website có màn hình tổng quan, hàng đợi cảnh báo có thể
+xác nhận, quản lý metadata thiết bị và đăng ký/kích hoạt model trong registry. Chạy
+`npm install` lần đầu hoặc sau khi thay đổi `package-lock.json`. Nếu PostgreSQL map sang
+cổng host khác, sửa `FALL_POSTGRES_URL` tương ứng. Dừng mỗi service bằng `Ctrl+C`.
+
+> Model activation hiện cập nhật trạng thái trong registry; scorer đang chạy vẫn dùng
+> model được truyền qua `--model` cho tới khi được khởi động lại với file mới.
 
 ## Kết quả đo được (trên mẫu 39 MB, cửa sổ 200 mẫu ≈ 2s @100 Hz)
 Huấn luyện/tách của `train` (1.741 cửa sổ; test 349):

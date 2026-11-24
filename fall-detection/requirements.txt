@@ -6,5 +6,8 @@ scikit-learn==1.5.2
 joblib==1.4.2
 psycopg[binary]==3.2.3
 
-# Spark job chạy trong container (không cần cài trên máy):
-#   pyspark==3.5.3
+# Model Registry + Device Manager APIs
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+
+# Spark job runs via spark-submit (PySpark 3.5.3); see README for Windows setup.
