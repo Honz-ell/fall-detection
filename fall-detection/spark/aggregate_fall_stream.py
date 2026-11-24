@@ -2,7 +2,7 @@
 
 Cách chạy:
     spark-submit spark/aggregate_fall_stream.py \
-        --broker kafka:9092 --topic wearable.fall.v1 \
+        --broker kafka:29092 --topic wearable.fall.v1 \
         --window "2 seconds" --watermark "5 seconds" \
         --postgres-url jdbc:postgresql://postgres:5432/falldetect
 
@@ -62,6 +62,18 @@ class MetricsState:
 METRICS = MetricsState()
 
 
+def progress_as_dict(progress: Any) -> dict[str, Any]:
+    """Normalize Spark progress across PySpark return types."""
+    if isinstance(progress, dict):
+        return progress
+    if isinstance(progress, str):
+        return json.loads(progress)
+    payload = getattr(progress, "json", None)
+    if isinstance(payload, str):
+        return json.loads(payload)
+    raise TypeError(f"Không đọc được Spark progress kiểu {type(progress).__name__}.")
+
+
 class MetricsHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self.path != "/metrics":
@@ -80,10 +92,12 @@ class MetricsHandler(BaseHTTPRequestHandler):
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="FallAllD window aggregation (Structured Streaming).")
-    p.add_argument("--broker", default="kafka:9092")
+    p.add_argument("--broker", default="kafka:29092")
     p.add_argument("--topic", default="wearable.fall.v1")
     p.add_argument("--window", default="2 seconds")
     p.add_argument("--watermark", default="5 seconds")
+    p.add_argument("--window-samples", type=int, default=200,
+                   help="Chỉ ghi các cửa sổ có đủ mẫu như cửa sổ lúc train.")
     p.add_argument("--starting-offsets", choices=("earliest", "latest"), default="earliest")
     p.add_argument("--checkpoint-location", default="/opt/project/checkpoints/spark-fall")
     p.add_argument("--postgres-url", default="jdbc:postgresql://postgres:5432/falldetect")
@@ -94,7 +108,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def write_batch(batch_df, batch_id: int, args: argparse.Namespace) -> None:
-    output = batch_df.where(F.col("device_id").isNotNull())
+    output = batch_df.where(
+        F.col("device_id").isNotNull()
+        & (F.col("sample_count") == args.window_samples)
+    )
     if not output.take(1):
         print(f"Micro-batch #{batch_id}: không có cửa sổ hợp lệ.")
         return
@@ -134,9 +151,11 @@ def main() -> None:
     )
 
     j = lambda path: F.get_json_object("json", path)  # noqa: E731
-    events = raw.select(
+    parsed = raw.select(
         j("$.device_id").alias("device_id"),
         F.to_timestamp(j("$.timestamp")).alias("event_time"),
+        j("$.sensor").alias("sensor"),
+        j("$.replay_control").cast("boolean").alias("replay_control"),
         j("$.acc_x").cast("double").alias("acc_x"),
         j("$.acc_y").cast("double").alias("acc_y"),
         j("$.acc_z").cast("double").alias("acc_z"),
@@ -144,10 +163,24 @@ def main() -> None:
         j("$.gyro_y").cast("double").alias("gyro_y"),
         j("$.gyro_z").cast("double").alias("gyro_z"),
         j("$.label").cast("int").alias("label"),
-    ).where(
+    )
+    is_control = (
+        (F.col("sensor") == "__CONTROL__")
+        | F.coalesce(F.col("replay_control"), F.lit(False))
+    )
+    has_measurements = (
+        F.col("acc_x").isNotNull()
+        & F.col("acc_y").isNotNull()
+        & F.col("acc_z").isNotNull()
+        & F.col("gyro_x").isNotNull()
+        & F.col("gyro_y").isNotNull()
+        & F.col("gyro_z").isNotNull()
+        & F.col("label").isNotNull()
+    )
+    events = parsed.withColumn("is_control", is_control).where(
         F.col("device_id").isNotNull()
         & F.col("event_time").isNotNull()
-        & F.col("acc_x").isNotNull()
+        & (F.col("is_control") | has_measurements)
     )
 
     measurable = (
@@ -164,7 +197,8 @@ def main() -> None:
     aggregates = (
         measurable.groupBy(F.window("event_time", args.window), "device_id")
         .agg(
-            F.count("*").alias("sample_count"),
+            # Bản tin control chỉ đẩy watermark; không tính là mẫu cảm biến.
+            F.count("acc_x").alias("sample_count"),
             F.round(F.avg("acc_mag"), 5).alias("acc_mag_mean"),
             F.round(F.stddev_pop("acc_mag"), 5).alias("acc_mag_std"),
             F.round(F.max("acc_mag"), 5).alias("acc_mag_max"),
@@ -212,8 +246,9 @@ def main() -> None:
     )
     try:
         while query.isActive:
-            if query.lastProgress is not None:
-                METRICS.update(json.loads(query.lastProgress.json))
+            progress = query.lastProgress
+            if progress is not None:
+                METRICS.update(progress_as_dict(progress))
             time.sleep(1)
         query.awaitTermination()
     except KeyboardInterrupt:

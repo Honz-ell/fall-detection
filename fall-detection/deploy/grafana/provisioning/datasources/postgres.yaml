@@ -1,6 +1,7 @@
 apiVersion: 1
 datasources:
   - name: falldetect
+    uid: fallpg
     type: postgres
     access: proxy
     url: postgres:5432

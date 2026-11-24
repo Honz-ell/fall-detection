@@ -1,7 +1,7 @@
-DATA ?= ../data/fallalld_wrist_sample.csv
-BROKER ?= localhost:9092
+DATA ?= data/fallalld_wrist_sample.csv
+BROKER ?= localhost:9094
 TOPIC ?= wearable.fall.v1
-PGURL ?= postgresql://falld:fall_dev_password@localhost:5432/falldetect
+PGURL ?= postgresql://falld:fall_dev_password@localhost:5433/falldetect
 
 .PHONY: install train up producer spark scorer test down clean
 
@@ -21,8 +21,7 @@ producer:
 	python producer/produce_fall.py --data $(DATA) --broker $(BROKER) --topic $(TOPIC)
 
 spark:
-	spark-submit spark/aggregate_fall_stream.py --broker kafka:9092 \
-		--topic $(TOPIC) --postgres-url jdbc:postgresql://postgres:5432/falldetect
+	docker compose -f deploy/docker-compose.yml logs -f spark
 
 scorer:
 	python scorer/score_fall.py --model models/fall_rf.joblib --postgres-url $(PGURL)

@@ -18,13 +18,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np  # noqa: E402
+from fall.console import configure_console  # noqa: E402
 from fall.features import FEATURE_COLUMNS  # noqa: E402
 from fall.windows import iter_window_records  # noqa: E402
 
 
 def main() -> int:
+    configure_console()
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", type=Path, default=Path("../data/fallalld_wrist_sample.csv"))
+    ap.add_argument("--data", type=Path, default=ROOT / "data" / "fallalld_wrist_sample.csv")
     ap.add_argument("--model", type=Path, default=ROOT / "models" / "fall_rf.joblib")
     ap.add_argument("--min-recall", type=float, default=0.6)
     args = ap.parse_args()

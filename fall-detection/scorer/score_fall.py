@@ -22,6 +22,7 @@ import joblib
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fall.console import configure_console  # noqa: E402
 from fall.features import FEATURE_COLUMNS  # noqa: E402
 from fall.windows import iter_window_records  # noqa: E402
 
@@ -35,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--window-samples", type=int, default=200)
     p.add_argument("--fall-ratio", type=float, default=0.5)
     p.add_argument("--threshold", type=float, default=0.5)
-    p.add_argument("--postgres-url", default="postgresql://falld:fall_dev_password@localhost:5432/falldetect")
+    p.add_argument("--postgres-url", default="postgresql://falld:fall_dev_password@localhost:5433/falldetect")
     p.add_argument("--limit", type=int, default=500, help="Số cửa sổ tối đa mỗi lần poll.")
     return p.parse_args()
 
@@ -158,8 +159,11 @@ def run_poll(args: argparse.Namespace, model) -> int:
                     )
                     if result["prediction"] == "FALL":
                         conn.execute(
-                            "INSERT INTO fall_alerts (device_id, window_start, score) VALUES (%s,%s,%s)",
-                            (result["device_id"], record["window_start"], result["score"]),
+                            "INSERT INTO fall_alerts (device_id, window_start, score) "
+                            "SELECT %s, %s, %s WHERE NOT EXISTS ("
+                            "SELECT 1 FROM fall_alerts WHERE device_id = %s AND window_start = %s)",
+                            (result["device_id"], record["window_start"], result["score"],
+                             result["device_id"], record["window_start"]),
                         )
                         print(f"⚠️  NGÃ: {result['device_id']} @ {record['window_start']} score={result['score']}")
                 conn.commit()
@@ -169,6 +173,7 @@ def run_poll(args: argparse.Namespace, model) -> int:
 
 
 def main() -> int:
+    configure_console()
     args = parse_args()
     model = load_model(args.model)
     if args.data:

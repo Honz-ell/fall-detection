@@ -24,7 +24,7 @@ ngã theo thời gian thực** với dữ liệu thiết bị đeo cổ tay Fall
 ## Dữ liệu
 - Nguồn: <https://huggingface.co/datasets/IdaFLab/FallAllD-Wrist> (Saleh et al., IEEE Sensors Journal, 2021; DOI 10.1109/JSEN.2020.3018335).
 - Schema: `acc_x,acc_y,acc_z,label,gyro_x,gyro_y,gyro_z`; `label`: `0` = sinh hoạt thường ngày (ADL), `1` = ngã.
-- `data/fallalld_wrist_sample.csv` — 39 MB / 348.318 mẫu / 76.160 mẫu ngã (21,9%) để chạy thử.
+- `data/fallalld_wrist_sample.csv` — 40 MB / 348.318 mẫu / 76.160 mẫu ngã (21,9%) để chạy thử.
 - Bản đầy đủ (11.971.400 mẫu): `bash data/download_fallalld.sh`.
 
 ## Cấu trúc
@@ -41,37 +41,40 @@ ngã theo thời gian thực** với dữ liệu thiết bị đeo cổ tay Fall
 | `tests/test_offline_pipeline.py` | Kiểm thử đầu–cuối không cần Kafka/Spark |
 
 ## Yêu cầu
-- Docker + Docker Compose (Kafka/Postgres/Grafana)
-- Python ≥ 3.10 (`requirements.txt`)
-- `spark-submit` (PySpark 3.5) cho Spark job
+- Docker Desktop đang chạy (Kafka/PostgreSQL/Grafana/Spark đều chạy bằng Compose)
+- Python ≥ 3.10 để train, phát dữ liệu và chạy scorer
+- Kết nối Internet lần đầu để Docker tải image và Spark tải Kafka/JDBC connectors
 
 ## Chạy thử
-```bash
-make install                 # pip install -r requirements.txt
-python train/train_fall_model.py --data data/fallalld_wrist_sample.csv
-python tests/test_offline_pipeline.py --data data/fallalld_wrist_sample.csv
+Mở PowerShell tại `fall-detection` (trên máy này: `D:\DLLL\data-repo\fall-detection`):
 
-make up                      # kafka + postgres + grafana (:9092 / :5432 / :3000)
-make producer                # phát dữ liệu vào Kafka
-make spark                   # spark-submit job tổng hợp
-make scorer                  # dự đoán + cảnh báo vào PostgreSQL
-make down
+```bash
+python -m pip install -r requirements.txt
+python train/train_fall_model.py --data data/fallalld_wrist_sample.csv  # tùy chọn: huấn luyện lại
+python tests/test_offline_pipeline.py                                 # kiểm tra offline
+
+docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml logs -f spark  # cửa sổ khác để xem log Spark
+python producer/produce_fall.py --data data/fallalld_wrist_sample.csv --broker localhost:9094 --speed 60
+python scorer/score_fall.py --model models/fall_rf.joblib --postgres-url postgresql://falld:fall_dev_password@localhost:5433/falldetect
 ```
 
+Grafana ở <http://localhost:3001> (đăng nhập `admin` / `admin`); Spark UI ở <http://localhost:4041>. Compose ánh xạ PostgreSQL ra cổng `5433`; bên trong mạng Docker, Spark vẫn dùng `postgres:5432`. Producer chạy trên Windows kết nối Kafka ở `localhost:9094`, còn Spark trong Compose dùng listener nội bộ `kafka:29092`. Các cổng này tránh đụng Kafka/PostgreSQL/Grafana/Spark UI của bản WESAD.
+
+Chạy Spark trước khi producer để nhận toàn bộ lượt phát. Nếu cần dừng, dùng `docker compose -f deploy/docker-compose.yml down`; dữ liệu và checkpoint được giữ lại.
+
 ## Kết quả đo được (trên mẫu 39 MB, cửa sổ 200 mẫu ≈ 2s @100 Hz)
-Huấn luyện/tách của `train` (1.741 cửa sổ; test 349):
+Huấn luyện/tách của `train` (1.741 cửa sổ; test 349; cửa sổ là ngã nếu ít nhất 50% mẫu mang nhãn ngã):
 
 | Chỉ số | ADL | NGÃ |
 |---|---|---|
-| Precision | 0,93 | 0,80 |
-| Recall | 0,95 | 0,72 |
-| F1 | 0,94 | **0,76** |
+| Precision | 0,91 | 0,81 |
+| Recall | 0,96 | **0,66** |
+| F1 | 0,93 | **0,72** |
 
-ROC-AUC = **0,9554**. Confusion matrix (test): TN=262, FP=13, FN=21, TP=53.
+ROC-AUC = **0,9471**. Confusion matrix (test): TN=261, FP=12, FN=26, TP=50.
 
-`scorer` chạy trên **toàn bộ** mẫu (gồm cả cửa sổ đã huấn luyện) được P=0,9615 /
-R=0,9211 / F1=0,9409 — con số này **lạc quan**, dùng để kiểm thử pipeline chứ không
-dùng báo cáo. Báo cáo lấy số của tập test ở trên.
+Các chỉ số này lấy từ một lần train mới với cách gán nhãn cửa sổ đã sửa. Nếu đang dùng model có sẵn từ lần train trước, chạy lại lệnh train ở trên để cập nhật model và `models/metrics.json`.
 
 Đặc trưng quan trọng nhất: `acc_y_mean`, `acc_x_mean`, `acc_z_mean`, `acc_mag_max`.
 
@@ -85,8 +88,8 @@ dùng báo cáo. Báo cáo lấy số của tập test ở trên.
 4. Tái dùng ~80% hạ tầng repo cũ (`compose.yaml`, Spark job, Model Registry, Grafana);
    thay reader, schema, model và dashboard.
 5. **Hạn chế:** chia train/test ngẫu nhiên theo cửa sổ; dữ liệu thật nên chia theo
-   người/session để tránh leakage. Spark/Kafka chưa chạy trong sandbox (không có Docker),
-   cần chạy thật trên máy có Docker để xác nhận độ trễ end-to-end.
+   người/session để tránh leakage. Kiểm tra offline không đo độ trễ end-to-end; cần bật
+   Docker Compose để thử toàn bộ Kafka → Spark → PostgreSQL.
 
 ## Bước tiếp theo (đề xuất)
 - Chạy thật `docker compose up` + đo latency producer→alert.

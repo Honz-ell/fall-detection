@@ -11,7 +11,7 @@ Bộ dữ liệu mẫu + script tải bản đầy đủ cho đề tài **phát 
 ## Kích thước
 | File | Dung lượng | Số dòng |
 |---|---|---|
-| `fallalld_wrist_sample.csv` (mẫu, có sẵn) | 39 MB | 348.316 |
+| `fallalld_wrist_sample.csv` (mẫu, có sẵn) | 40 MB | 348.318 |
 | `fallalld_wrist_full.csv` (bản đầy đủ) | 1,37 GB | 11.971.400 |
 | `fallalld_part_0.parquet` + `fallalld_part_1.parquet` | ~480 MB | 11.971.400 |
 
@@ -22,7 +22,7 @@ Bộ dữ liệu mẫu + script tải bản đầy đủ cho đề tài **phát 
 | `label` | `0` = hoạt động sinh hoạt thường ngày (ADL), `1` = ngã |
 | `gyro_x, gyro_y, gyro_z` | Vận tốc góc (rad/s) |
 
-Trong mẫu 39 MB: 272.156 dòng ADL (0) và 76.160 dòng ngã (1).
+Trong mẫu: 272.158 dòng ADL (0) và 76.160 dòng ngã (1).
 
 ## Tải bản đầy đủ
 ```bash

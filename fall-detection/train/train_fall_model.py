@@ -30,6 +30,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fall.console import configure_console  # noqa: E402
 from fall.features import FEATURE_COLUMNS, compute_window_features  # noqa: E402
 
 
@@ -48,27 +49,29 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_windows(frame: pd.DataFrame, window_samples: int) -> tuple[np.ndarray, np.ndarray]:
-    """Gom mẫu liên tiếp thành cửa sổ; trả về (features, labels)."""
+    """Gom mẫu liên tiếp; trả về (features, tỷ lệ mẫu ngã trong mỗi cửa sổ)."""
     frame = frame.sort_index()
     boundaries = (np.arange(len(frame)) // window_samples)
     features: list[list[float]] = []
-    labels: list[int] = []
+    fall_ratios: list[float] = []
     for _, chunk in frame.groupby(boundaries, sort=True):
         if len(chunk) < window_samples:
             continue  # bỏ cửa sổ rút gọn ở cuối
         feats = compute_window_features(chunk)
         features.append([feats[name] for name in FEATURE_COLUMNS])
-        labels.append(int((chunk["label"].to_numpy() > 0).mean()))
-    return np.asarray(features, dtype="float32"), np.asarray(labels, dtype="float32")
+        fall_ratios.append(float((chunk["label"].to_numpy() > 0).mean()))
+    return np.asarray(features, dtype="float32"), np.asarray(fall_ratios, dtype="float32")
 
 
 def main() -> int:
+    configure_console()
     args = parse_args()
     if not args.data.is_file():
         print(f"Không tìm thấy file: {args.data}")
         return 2
-    if args.window_samples <= 0 or not 0 < args.test_size < 1:
-        print("--window-samples phải > 0 và --test-size trong (0,1).")
+    if (args.window_samples <= 0 or not 0 < args.test_size < 1
+            or not 0 <= args.fall_ratio <= 1):
+        print("--window-samples phải > 0, --test-size trong (0,1), --fall-ratio trong [0,1].")
         return 2
 
     print(f"Đọc {args.data} ...")
@@ -89,8 +92,8 @@ def main() -> int:
     print(f"Tổng mẫu: {len(data):,} | ngã: {int(data['label'].sum()):,} "
           f"({data['label'].mean() * 100:.2f}%)")
 
-    raw_y, y_ratio = build_windows(data, args.window_samples)
-    y = (y_ratio >= args.fall_ratio).astype(int)
+    x, fall_ratios = build_windows(data, args.window_samples)
+    y = (fall_ratios >= args.fall_ratio).astype(int)
     print(f"Cửa sổ ({args.window_samples} mẫu/cửa sổ): {len(y):,} | "
           f"ngã: {int(y.sum()):,} ({y.mean() * 100:.2f}%)")
     if y.sum() == 0 or y.sum() == len(y):
@@ -98,7 +101,7 @@ def main() -> int:
         return 3
 
     x_train, x_test, y_train, y_test = train_test_split(
-        raw_y, y, test_size=args.test_size, random_state=args.seed, stratify=y
+        x, y, test_size=args.test_size, random_state=args.seed, stratify=y
     )
     print(f"Train={len(y_train):,} Test={len(y_test):,}")
 
