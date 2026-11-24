@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -65,11 +66,16 @@ def read_dashboard_data(dsn: str) -> dict:
             )) for r in reversed(cur.fetchall())]
 
             cur.execute("""
-                SELECT a.created_at, a.device_id, a.score, a.acknowledged
-                FROM fall_alerts a ORDER BY a.created_at DESC LIMIT 8
+                SELECT a.id, a.created_at, a.device_id, a.window_start, a.score, a.acknowledged,
+                       w.acc_mag_max, w.acc_mag_mean, w.gyro_mag_mean, w.sample_count
+                FROM fall_alerts a
+                LEFT JOIN fall_window_aggregates w
+                  ON w.device_id = a.device_id AND w.window_start = a.window_start
+                ORDER BY a.created_at DESC LIMIT 8
             """)
-            alerts = [dict(zip(("created_at", "device_id", "score", "acknowledged"), r))
-                      for r in cur.fetchall()]
+            fields = ("id", "created_at", "device_id", "window_start", "score", "acknowledged",
+                      "acc_mag_max", "acc_mag_mean", "gyro_mag_mean", "sample_count")
+            alerts = [dict(zip(fields, r)) for r in cur.fetchall()]
 
     return {
         "ok": True,
@@ -113,6 +119,30 @@ def make_handler(dsn: str):
                 self.wfile.write(content)
                 return
             self.send_error(404)
+
+        def do_POST(self):  # noqa: N802
+            match = re.fullmatch(r"/api/alerts/(\d+)/acknowledge", urlparse(self.path).path)
+            if not match:
+                self.send_error(404)
+                return
+            try:
+                with psycopg.connect(dsn, connect_timeout=3) as conn:
+                    row = conn.execute(
+                        "UPDATE fall_alerts SET acknowledged = TRUE WHERE id = %s RETURNING id",
+                        (int(match.group(1)),),
+                    ).fetchone()
+                if row is None:
+                    self.send_error(404, "Không tìm thấy cảnh báo")
+                    return
+                payload = json.dumps({"ok": True, "id": row[0]}).encode("utf-8")
+                self.send_response(200)
+            except Exception as exc:
+                payload = json.dumps({"ok": False, "error": str(exc)}).encode("utf-8")
+                self.send_response(503)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
 
         def log_message(self, fmt, *args):
             print(f"[{self.log_date_time_string()}] {fmt % args}")

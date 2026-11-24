@@ -68,7 +68,9 @@ python .\dashboard\app.py --postgres-url "postgresql://falld:fall_dev_password@l
 ```
 
 Mở <http://localhost:8501>. Dashboard hiển thị trạng thái dữ liệu, số cửa sổ phân tích,
-biểu đồ gia tốc, các dự đoán FALL/ADL và luồng xử lý. Với Compose dùng cổng PostgreSQL
+biểu đồ gia tốc, các dự đoán FALL/ADL và luồng xử lý. Chọn một cảnh báo để xem đặc trưng
+cảm biến/độ tin cậy, rồi dùng **Ghi nhận đã kiểm tra** để cập nhật trạng thái cảnh báo.
+Với Compose dùng cổng PostgreSQL
 mặc định, thay `5433` bằng `5432`. Dừng giao diện bằng `Ctrl+C`.
 
 ## Kết quả đo được (trên mẫu 39 MB, cửa sổ 200 mẫu ≈ 2s @100 Hz)
